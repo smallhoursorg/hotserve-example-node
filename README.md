@@ -115,7 +115,10 @@ The deploy step prints the app's status when the new
 version is live, or why it was refused; a refused deploy leaves the
 old version serving. A 401 means the box's `deploy_trust` for this
 app does not accept the run — most often `claim repository` or `claim
-ref` names another repository or branch — or that `HOTSERVE_URL`
+ref` names another repository or branch, or its `audience` is not what
+the job asks for (`hotserve`, unless the job's `env:` sets
+`HOTSERVE_AUDIENCE` beside `HOTSERVE_URL`, where the rollback step gets
+it too) — or that `HOTSERVE_URL`
 names an app the box does not know, which answers the same 401. The
 step prints the values this run minted its token with; the box's
 journal (`journalctl -u hotserve`) names the app asked for and the
@@ -125,7 +128,11 @@ minute in all; past either, a failure is not written until the
 minute passes, and the answer stays the same 401 — except that the
 box failing to consult the token's issuer is named once a minute
 whatever the budget, and a re-run once the issuer is back goes
-through.
+through. Before reporting a 401 the step sends the request once more,
+3 seconds later: the box refuses the first token under GitHub's new
+signing key while it fetches that key, and the retry goes through —
+unless the box had fetched the keys in the minute before, when the
+journal's refusal says from when a re-run goes through.
 
 What a first deploy that worked looks like, from the laptop:
 
@@ -135,11 +142,17 @@ What a first deploy that worked looks like, from the laptop:
   (schema v1)`; the 503 from before the deploy is gone.
 - `ssh alice@box.example.com journalctl -t hotserve-example` shows the
   app's own output — the migration's line, then whatever `server.js`
-  prints. The `adm` group the box README grants is what reads it.
+  prints. `alice` is the administrator from
+  [Hardening](https://github.com/smallhoursorg/hotserve/blob/main/docs/hardening.md#3-an-administrator-if-you-want-one),
+  whose `adm` group is what reads it; root reads it too.
 
-A re-run of the same workflow run is refused with a 422: versions are
-immutable on the box, and that commit's version is already there. Push
-a new commit to deploy again.
+A re-run of the same workflow run rebuilds the tarball, and the box
+refuses it with a 422: versions are immutable on the box, that
+commit's version is already there, and the rebuilt bytes are not the
+ones it runs (the box relaunches a running version only for the very
+same artifact). Push a new commit to deploy again, or **Run workflow**
+with the running version as the rollback target to relaunch it as it
+is.
 
 ## What the executable is, and isn't
 
@@ -164,8 +177,9 @@ a tag or another branch is refused with a 401. The box relaunches
 that release from its disk — the same start, health gate and cutover
 as a deploy, and no build — so it is live in about twenty seconds, or
 the run is red with the reason and nothing changed. A version the box
-no longer holds is a 422: it keeps the newest five releases, plus the
-running one. Roll forward the same way you deploy: push a commit.
+no longer holds is a 422: it keeps the five releases it deployed most
+recently, the running one among them (a rollback counts as a deploy).
+Roll forward the same way you deploy: push a commit.
 
 ## Deploying without CI
 
@@ -176,13 +190,14 @@ an arm64 box). The token comes from `hotserve deploy-token`, and
 hotserve's release binaries are Linux only, so this is a path for a
 Linux machine that is not the box (the signing key must stay off the
 box).
-With a `deploy_trust local` block on the box (see
+With a `deploy_trust local` block on the box whose `audience` is the
+box's deploy host, `deploy.example.com` here (see
 [Deploy authentication](https://github.com/smallhoursorg/hotserve/blob/main/liveswap/README.md#deploy-authentication-deploy_trust)):
 
 ```sh
 npm run bundle
 HOTSERVE_URL=https://deploy.example.com/example \
-HOTSERVE_TOKEN=$(hotserve deploy-token --key deploy.key --audience hotserve) \
+HOTSERVE_TOKEN=$(hotserve deploy-token --key deploy.key --audience deploy.example.com) \
 npm run deploy
 ```
 
