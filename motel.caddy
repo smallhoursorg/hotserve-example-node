@@ -1,7 +1,7 @@
 # What this app needs from the box: the lines that go inside its
 # `app <name> { … }` block in the box's Caddyfile — your box repo's
-# <host>/Caddyfile, which the box installs as /etc/hotserve/Caddyfile.
-# (hotserve's e2e suite imports this
+# <host>/Caddyfile, which the box installs as /etc/motel/Caddyfile.
+# (motel's e2e suite imports this
 # file, so these exact lines are tested.)
 #
 # Both commands are executables inside the tarball, so nothing has to
